@@ -71,7 +71,9 @@ export function getApimBaseUrl(): string {
 export type ProxyRequestOptions = {
   method: string;
   route: string;
-  headers: Headers;
+  headers: {
+    get(name: string): string | null;
+  };
   body?: string;
   accessToken?: string;
 };
