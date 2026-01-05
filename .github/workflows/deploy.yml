@@ -109,3 +109,4 @@ jobs:
           echo "**Resource Group:** device-loan-${{ steps.vars.outputs.environment }}-th04-rg" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Function code deployed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 View deployment: https://portal.azure.com/#@th04.onmicrosoft.com/resource/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/device-loan-${{ steps.vars.outputs.environment }}-th04-rg/providers/Microsoft.Web/sites/device-loan-${{ steps.vars.outputs.environment }}-th04-${{ env.SERVICE_NAME }}/appServicesLogs" >> $GITHUB_STEP_SUMMARY
