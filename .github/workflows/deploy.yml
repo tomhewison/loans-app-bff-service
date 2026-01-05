@@ -1,0 +1,111 @@
+name: Deploy BFF Service
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'tsconfig.json'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  SERVICE_NAME: bff
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Install production dependencies
+        run: |
+          npm ci --production
+
+      - name: Set deployment variables
+        id: vars
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create deployment package
+        run: |
+          zip -r functionapp.zip \
+            dist/ \
+            host.json \
+            package.json \
+            package-lock.json \
+            node_modules/
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Function App
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            RESOURCE_GROUP="device-loan-${{ steps.vars.outputs.environment }}-th04-rg"
+            FUNCTION_APP_NAME="device-loan-${{ steps.vars.outputs.environment }}-th04-${{ env.SERVICE_NAME }}"
+            
+            echo "Deploying to $FUNCTION_APP_NAME in $RESOURCE_GROUP..."
+            az functionapp deployment source config-zip \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$FUNCTION_APP_NAME" \
+              --src functionapp.zip
+
+      - name: Display Deployment Summary
+        run: |
+          echo "## 🚀 BFF Service Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ steps.vars.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Function App:** device-loan-${{ steps.vars.outputs.environment }}-th04-${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Resource Group:** device-loan-${{ steps.vars.outputs.environment }}-th04-rg" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Function code deployed successfully!" >> $GITHUB_STEP_SUMMARY
