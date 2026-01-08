@@ -129,14 +129,4 @@ app.http('proxyDelete', {
   handler: handleProxy,
 });
 
-// CORS preflight handler for proxy routes
-app.http('proxyOptions', {
-  methods: ['OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'proxy/{*route}',
-  handler: async (request) => {
-    const origin = request.headers.get('origin');
-    return addCorsHeaders({ status: 204 }, origin);
-  },
-});
-
+// Note: OPTIONS requests are handled by the global optionsHandler in cors.ts

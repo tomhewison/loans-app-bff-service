@@ -39,6 +39,12 @@ export function handleCorsPreflight(origin?: string | null): HttpResponseInit {
   const requestOrigin = origin || '*';
   const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0] || '*';
 
+  console.log('[CORS] Preflight request:', {
+    requestOrigin,
+    allowedOrigin,
+    allAllowedOrigins: ALLOWED_ORIGINS
+  });
+
   return {
     status: 204,
     headers: {
