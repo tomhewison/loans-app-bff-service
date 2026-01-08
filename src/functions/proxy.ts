@@ -16,17 +16,17 @@ async function handleProxy(request: HttpRequest): Promise<HttpResponseInit> {
   const method = request.method;
 
   const operation = logger.startOperation('proxy', request.headers.get('x-correlation-id') || undefined);
-  
+
   try {
     operation.logger.info('Proxy request received', { method, route });
 
     // Validate authentication if Authorization header is present
     let accessToken: string | undefined;
     const authHeader = request.headers.get('authorization');
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const validation = await validateAuth0Token(request);
-      
+
       if (!validation.valid) {
         operation.logger.warn('Authentication failed', { error: validation.error });
         operation.end(false);
@@ -127,5 +127,16 @@ app.http('proxyDelete', {
   authLevel: 'anonymous',
   route: 'proxy/{*route}',
   handler: handleProxy,
+});
+
+// CORS preflight handler for proxy routes
+app.http('proxyOptions', {
+  methods: ['OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'proxy/{*route}',
+  handler: async (request) => {
+    const origin = request.headers.get('origin');
+    return addCorsHeaders({ status: 204 }, origin);
+  },
 });
 
