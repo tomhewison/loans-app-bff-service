@@ -1,10 +1,15 @@
 import { HttpResponseInit } from '@azure/functions';
 
+// Parse allowed origins, trimming whitespace and filtering empty values
+const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(o => o.length > 0);
+
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
-  // Add production origins from environment variable
-  ...(process.env.ALLOWED_ORIGINS?.split(',') || []),
+  ...envOrigins,
 ];
 
 /**
@@ -13,7 +18,7 @@ const ALLOWED_ORIGINS = [
 export function addCorsHeaders(response: HttpResponseInit, origin?: string | null): HttpResponseInit {
   const requestOrigin = origin || '*';
   const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0] || '*';
-  
+
   return {
     ...response,
     headers: {
@@ -33,7 +38,7 @@ export function addCorsHeaders(response: HttpResponseInit, origin?: string | nul
 export function handleCorsPreflight(origin?: string | null): HttpResponseInit {
   const requestOrigin = origin || '*';
   const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0] || '*';
-  
+
   return {
     status: 204,
     headers: {

@@ -37,7 +37,7 @@ export async function getApimSubscriptionKey(): Promise<string> {
 
   try {
     logger.info('Fetching APIM subscription key from Key Vault', { keyVaultUrl, secretName });
-    
+
     const credential = new DefaultAzureCredential();
     const client = new SecretClient(keyVaultUrl, credential);
     const secret = await client.getSecret(secretName);
@@ -48,7 +48,7 @@ export async function getApimSubscriptionKey(): Promise<string> {
 
     cachedSubscriptionKey = secret.value;
     cacheExpiry = Date.now() + CACHE_DURATION_MS;
-    
+
     logger.info('Successfully retrieved APIM subscription key from Key Vault');
     return secret.value;
   } catch (error) {
@@ -134,7 +134,10 @@ export async function forwardToApim(options: ProxyRequestOptions): Promise<Proxy
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       // Filter out headers that shouldn't be forwarded
-      if (!['transfer-encoding', 'connection', 'keep-alive'].includes(key.toLowerCase())) {
+      // Including CORS headers - BFF adds its own to avoid duplicates
+      const lowerKey = key.toLowerCase();
+      if (!['transfer-encoding', 'connection', 'keep-alive'].includes(lowerKey) &&
+        !lowerKey.startsWith('access-control-')) {
         responseHeaders[key] = value;
       }
     });
@@ -142,7 +145,7 @@ export async function forwardToApim(options: ProxyRequestOptions): Promise<Proxy
     // Parse response body
     let responseBody: any;
     const contentType = response.headers.get('content-type');
-    
+
     if (response.status === 204) {
       responseBody = null;
     } else if (contentType?.includes('application/json')) {
