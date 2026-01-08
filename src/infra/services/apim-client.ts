@@ -135,8 +135,9 @@ export async function forwardToApim(options: ProxyRequestOptions): Promise<Proxy
     response.headers.forEach((value, key) => {
       // Filter out headers that shouldn't be forwarded
       // Including CORS headers - BFF adds its own to avoid duplicates
+      // And Content-Encoding - fetch auto-decompresses, so we don't forward compressed encoding
       const lowerKey = key.toLowerCase();
-      if (!['transfer-encoding', 'connection', 'keep-alive'].includes(lowerKey) &&
+      if (!['transfer-encoding', 'connection', 'keep-alive', 'content-encoding', 'content-length'].includes(lowerKey) &&
         !lowerKey.startsWith('access-control-')) {
         responseHeaders[key] = value;
       }
