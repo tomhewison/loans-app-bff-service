@@ -9,7 +9,7 @@ To keep the frontend "thin" and secure, this BFF handles the following:
 - **Secret Masking**: Injects the `Ocp-Apim-Subscription-Key` into requests so the frontend never sees it.
 - **Token Exchange**: Forwards Bearer tokens from the browser to the APIM.
 - **Protocol Translation**: Handles the Auth0 Authorization Code Flow.
-- **CORS Management**: Acts as the single allowed origin for the frontend.
+- **CORS Management**: Configured via Azure Functions portal settings.
 
 ## 🏗️ Architecture Flow
 
@@ -25,15 +25,13 @@ To keep the frontend "thin" and secure, this BFF handles the following:
 src/
 ├── functions/
 │   ├── auth.ts          # Auth0 login/callback/logout handlers
-│   ├── cors.ts          # CORS preflight handler
 │   ├── health.ts        # Health check endpoint
 │   └── proxy.ts         # Main proxy endpoint
 └── infra/
     ├── logging/
     │   └── logger.ts    # Application Insights logger
     ├── middleware/
-    │   ├── auth0-middleware.ts  # JWT validation
-    │   └── cors.ts              # CORS utilities
+    │   └── auth0-middleware.ts  # JWT validation
     └── services/
         └── apim-client.ts       # APIM forwarding client
 ```
@@ -61,7 +59,6 @@ src/
 | `AUTH0_CLIENT_ID` | Auth0 application client ID | Yes |
 | `AUTH0_CLIENT_SECRET` | Auth0 application client secret | Yes |
 | `AUTH0_AUDIENCE` | Auth0 API audience | Yes |
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed origins | No |
 | `FRONTEND_URL` | Frontend URL for redirects | No |
 
 *Either `APIM_SUBSCRIPTION_KEY` or `KEY_VAULT_URL` must be configured.

@@ -1,23 +1,20 @@
 import { app } from '@azure/functions';
 import { HttpRequest, HttpResponseInit } from '@azure/functions';
-import { addCorsHeaders } from '../infra/middleware/cors';
 
 async function handleHealth(request: HttpRequest): Promise<HttpResponseInit> {
-  const origin = request.headers.get('origin');
-  
   try {
     // Simple health check - just return OK status
-    return addCorsHeaders({
+    return {
       status: 200,
       jsonBody: {
         status: 'healthy',
         service: 'bff-service',
         timestamp: new Date().toISOString(),
       },
-    }, origin);
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return addCorsHeaders({
+    return {
       status: 500,
       jsonBody: {
         status: 'unhealthy',
@@ -25,7 +22,7 @@ async function handleHealth(request: HttpRequest): Promise<HttpResponseInit> {
         error: message,
         timestamp: new Date().toISOString(),
       },
-    }, origin);
+    };
   }
 }
 
@@ -36,8 +33,3 @@ app.http('healthHttp', {
   route: 'health',
   handler: handleHealth,
 });
-
-
-
-
-

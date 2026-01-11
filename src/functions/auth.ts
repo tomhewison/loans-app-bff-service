@@ -1,5 +1,4 @@
 import { app, HttpRequest, HttpResponseInit } from '@azure/functions';
-import { addCorsHeaders } from '../infra/middleware/cors';
 import { logger } from '../infra/logging/logger';
 
 /**
@@ -40,18 +39,16 @@ function getCallbackUrl(request: HttpRequest): string {
  * Redirects the user to Auth0's login page
  */
 async function handleLogin(request: HttpRequest): Promise<HttpResponseInit> {
-  const origin = request.headers.get('origin');
-  
   try {
     const config = getAuth0Config();
     const callbackUrl = getCallbackUrl(request);
-    
+
     // Get the return URL from query params (where to redirect after login)
     const returnUrl = request.query.get('returnUrl') || config.frontendUrl;
-    
+
     // Generate a state parameter (should include CSRF protection in production)
     const state = Buffer.from(JSON.stringify({ returnUrl })).toString('base64url');
-    
+
     // Build the Auth0 authorization URL
     const authUrl = new URL(`https://${config.domain}/authorize`);
     authUrl.searchParams.set('response_type', 'code');
@@ -59,13 +56,13 @@ async function handleLogin(request: HttpRequest): Promise<HttpResponseInit> {
     authUrl.searchParams.set('redirect_uri', callbackUrl);
     authUrl.searchParams.set('scope', 'openid profile email');
     authUrl.searchParams.set('state', state);
-    
+
     if (config.audience) {
       authUrl.searchParams.set('audience', config.audience);
     }
 
-    logger.info('Initiating Auth0 login', { 
-      returnUrl, 
+    logger.info('Initiating Auth0 login', {
+      returnUrl,
       callbackUrl,
       authDomain: config.domain,
     });
@@ -80,15 +77,15 @@ async function handleLogin(request: HttpRequest): Promise<HttpResponseInit> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Failed to initiate login', error as Error);
-    
-    return addCorsHeaders({
+
+    return {
       status: 500,
       jsonBody: {
         error: 'Login Error',
         message: 'Failed to initiate login flow',
         details: process.env.NODE_ENV === 'development' ? message : undefined,
       },
-    }, origin);
+    };
   }
 }
 
@@ -98,18 +95,16 @@ async function handleLogin(request: HttpRequest): Promise<HttpResponseInit> {
  * Exchanges the authorization code for tokens
  */
 async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
-  const origin = request.headers.get('origin');
-  
   try {
     const config = getAuth0Config();
     const callbackUrl = getCallbackUrl(request);
-    
+
     // Get the authorization code and state from query params
     const code = request.query.get('code');
     const state = request.query.get('state');
     const error = request.query.get('error');
     const errorDescription = request.query.get('error_description');
-    
+
     // Handle Auth0 errors
     if (error) {
       logger.warn('Auth0 returned an error', { error, errorDescription });
@@ -120,7 +115,7 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
         },
       };
     }
-    
+
     if (!code) {
       logger.warn('No authorization code received');
       return {
@@ -130,7 +125,7 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
         },
       };
     }
-    
+
     // Decode the state to get the return URL
     let returnUrl = config.frontendUrl;
     if (state) {
@@ -141,10 +136,10 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
         logger.warn('Failed to decode state parameter');
       }
     }
-    
+
     // Exchange the code for tokens
     logger.info('Exchanging authorization code for tokens');
-    
+
     const tokenResponse = await fetch(`https://${config.domain}/oauth/token`, {
       method: 'POST',
       headers: {
@@ -158,7 +153,7 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
         redirect_uri: callbackUrl,
       }),
     });
-    
+
     if (!tokenResponse.ok) {
       const errorBody = await tokenResponse.text();
       logger.error('Failed to exchange code for tokens', new Error(errorBody));
@@ -169,16 +164,16 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
         },
       };
     }
-    
+
     const tokens = await tokenResponse.json() as {
       access_token: string;
       id_token?: string;
       token_type: string;
       expires_in: number;
     };
-    
+
     logger.info('Successfully obtained tokens');
-    
+
     // Redirect back to the frontend with the token
     // In a more secure implementation, you would:
     // 1. Store the token in an HttpOnly cookie
@@ -186,7 +181,7 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
     // For simplicity, we're passing it as a URL fragment (client-side only)
     const redirectUrl = new URL(returnUrl);
     redirectUrl.hash = `access_token=${tokens.access_token}&token_type=${tokens.token_type}&expires_in=${tokens.expires_in}`;
-    
+
     return {
       status: 302,
       headers: {
@@ -197,7 +192,7 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
     const config = getAuth0Config();
     const message = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Callback handling failed', error as Error);
-    
+
     return {
       status: 302,
       headers: {
@@ -214,10 +209,10 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
 async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     const config = getAuth0Config();
-    
+
     // Get the return URL from query params
     const returnUrl = request.query.get('returnUrl') || config.frontendUrl;
-    
+
     // Build the Auth0 logout URL
     const logoutUrl = new URL(`https://${config.domain}/v2/logout`);
     logoutUrl.searchParams.set('client_id', config.clientId);
@@ -234,7 +229,7 @@ async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Failed to initiate logout', error as Error);
-    
+
     // Redirect to frontend anyway
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     return {
@@ -252,59 +247,57 @@ async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
  * Requires a valid Bearer token
  */
 async function handleMe(request: HttpRequest): Promise<HttpResponseInit> {
-  const origin = request.headers.get('origin');
-  
   try {
     const config = getAuth0Config();
     const authHeader = request.headers.get('authorization');
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return addCorsHeaders({
+      return {
         status: 401,
         jsonBody: {
           error: 'Unauthorized',
           message: 'No access token provided',
         },
-      }, origin);
+      };
     }
-    
+
     const accessToken = authHeader.substring(7);
-    
+
     // Fetch user info from Auth0
     const userInfoResponse = await fetch(`https://${config.domain}/userinfo`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
     });
-    
+
     if (!userInfoResponse.ok) {
       const status = userInfoResponse.status === 401 ? 401 : 500;
-      return addCorsHeaders({
+      return {
         status,
         jsonBody: {
           error: status === 401 ? 'Unauthorized' : 'Error',
           message: 'Failed to fetch user information',
         },
-      }, origin);
+      };
     }
-    
+
     const userInfo = await userInfoResponse.json();
-    
-    return addCorsHeaders({
+
+    return {
       status: 200,
       jsonBody: userInfo,
-    }, origin);
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Failed to fetch user info', error as Error);
-    
-    return addCorsHeaders({
+
+    return {
       status: 500,
       jsonBody: {
         error: 'Error',
         message: 'Failed to fetch user information',
       },
-    }, origin);
+    };
   }
 }
 

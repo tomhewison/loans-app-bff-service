@@ -1,5 +1,4 @@
 import { app, HttpRequest, HttpResponseInit } from '@azure/functions';
-import { addCorsHeaders } from '../infra/middleware/cors';
 import { forwardToApim } from '../infra/services/apim-client';
 import { validateAuth0Token } from '../infra/middleware/auth0-middleware';
 import { logger } from '../infra/logging/logger';
@@ -11,7 +10,6 @@ import { logger } from '../infra/logging/logger';
  * - GET/POST/PUT/DELETE /api/proxy/{*route} -> APIM /{route}
  */
 async function handleProxy(request: HttpRequest): Promise<HttpResponseInit> {
-  const origin = request.headers.get('origin');
   const route = request.params.route || '';
   const method = request.method;
 
@@ -30,13 +28,13 @@ async function handleProxy(request: HttpRequest): Promise<HttpResponseInit> {
       if (!validation.valid) {
         operation.logger.warn('Authentication failed', { error: validation.error });
         operation.end(false);
-        return addCorsHeaders({
+        return {
           status: 401,
           jsonBody: {
             error: 'Unauthorized',
             message: validation.error,
           },
-        }, origin);
+        };
       }
 
       // Extract the token to forward to APIM
@@ -70,26 +68,25 @@ async function handleProxy(request: HttpRequest): Promise<HttpResponseInit> {
     });
     operation.end(response.status < 400);
 
-    // Return the response with CORS headers
-    return addCorsHeaders({
+    return {
       status: response.status,
       headers: response.headers,
       jsonBody: response.body,
-    }, origin);
+    };
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     operation.logger.error('Proxy request failed', error as Error, { method, route });
     operation.end(false);
 
-    return addCorsHeaders({
+    return {
       status: 502,
       jsonBody: {
         error: 'Bad Gateway',
         message: 'Failed to forward request to backend service',
         details: process.env.NODE_ENV === 'development' ? message : undefined,
       },
-    }, origin);
+    };
   }
 }
 
@@ -129,4 +126,3 @@ app.http('proxyDelete', {
   handler: handleProxy,
 });
 
-// Note: OPTIONS requests are handled by the global optionsHandler in cors.ts
