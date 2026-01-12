@@ -136,7 +136,7 @@ async function handleDashboardStats(request: HttpRequest): Promise<HttpResponseI
  * List all reservations with optional filters (staff only)
  */
 async function handleListReservations(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/reservations');
+    return proxyToManagementService(request, '/admin/reservations');
 }
 
 /**
@@ -144,7 +144,7 @@ async function handleListReservations(request: HttpRequest): Promise<HttpRespons
  * List overdue reservations (staff only)
  */
 async function handleListOverdue(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/reservations/overdue');
+    return proxyToManagementService(request, '/admin/reservations/overdue');
 }
 
 /**
@@ -159,27 +159,27 @@ async function handleListPending(request: HttpRequest): Promise<HttpResponseInit
 app.http('getDashboardStats', {
     methods: ['GET'],
     authLevel: 'anonymous',
-    route: 'admin/dashboard/stats',
+    route: 'dashboard/stats',
     handler: handleDashboardStats,
 });
 
 app.http('listAdminReservations', {
     methods: ['GET'],
     authLevel: 'anonymous',
-    route: 'admin/reservations',
+    route: 'reservations',
     handler: handleListReservations,
 });
 
 app.http('listOverdueReservations', {
     methods: ['GET'],
     authLevel: 'anonymous',
-    route: 'admin/reservations/overdue',
+    route: 'reservations/overdue',
     handler: handleListOverdue,
 });
 
 app.http('listPendingCollections', {
     methods: ['GET'],
     authLevel: 'anonymous',
-    route: 'admin/reservations/pending',
+    route: 'reservations/pending',
     handler: handleListPending,
 });
