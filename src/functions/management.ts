@@ -110,8 +110,8 @@ async function proxyToManagementService(
             jsonBody: responseData,
         };
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.error('Management service proxy error', { error: message, endpoint });
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        logger.error(`Management service proxy error for ${endpoint}`, err);
 
         return {
             status: 500,
