@@ -2,6 +2,7 @@ import { app, HttpRequest, HttpResponseInit } from '@azure/functions';
 import { forwardToApim } from '../infra/services/apim-client';
 import { validateAuth0Token } from '../infra/middleware/auth0-middleware';
 import { logger } from '../infra/logging/logger';
+import { getTokenFromCookies } from './auth';
 
 /**
  * Proxy handler - forwards requests to APIM with subscription key injection
@@ -18,28 +19,35 @@ async function handleProxy(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     operation.logger.info('Proxy request received', { method, route });
 
-    // Validate authentication if Authorization header is present
+    // Get access token from cookie (preferred) or Authorization header
     let accessToken: string | undefined;
-    const authHeader = request.headers.get('authorization');
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const validation = await validateAuth0Token(request);
+    // First, try to get token from HttpOnly cookie
+    const cookieToken = getTokenFromCookies(request);
+    if (cookieToken) {
+      accessToken = cookieToken;
+      operation.logger.debug('Using token from cookie');
+    } else {
+      // Fall back to Authorization header for backwards compatibility
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const validation = await validateAuth0Token(request);
 
-      if (!validation.valid) {
-        operation.logger.warn('Authentication failed', { error: validation.error });
-        operation.end(false);
-        return {
-          status: 401,
-          jsonBody: {
-            error: 'Unauthorized',
-            message: validation.error,
-          },
-        };
+        if (!validation.valid) {
+          operation.logger.warn('Authentication failed', { error: validation.error });
+          operation.end(false);
+          return {
+            status: 401,
+            jsonBody: {
+              error: 'Unauthorized',
+              message: validation.error,
+            },
+          };
+        }
+
+        accessToken = authHeader.substring(7);
+        operation.logger.debug('Using token from Authorization header', { userId: validation.user?.sub });
       }
-
-      // Extract the token to forward to APIM
-      accessToken = authHeader.substring(7);
-      operation.logger.debug('User authenticated', { userId: validation.user?.sub });
     }
 
     // Get request body for non-GET requests

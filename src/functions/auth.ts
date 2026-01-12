@@ -1,6 +1,10 @@
 import { app, HttpRequest, HttpResponseInit } from '@azure/functions';
 import { logger } from '../infra/logging/logger';
 
+// Cookie configuration
+const COOKIE_NAME = 'bff_access_token';
+const COOKIE_MAX_AGE = 3600; // 1 hour in seconds
+
 /**
  * Auth0 Configuration helpers
  */
@@ -31,6 +35,69 @@ function getCallbackUrl(request: HttpRequest): string {
   const host = request.headers.get('host') || 'localhost:7071';
   const protocol = request.headers.get('x-forwarded-proto') || 'http';
   return `${protocol}://${host}/api/auth/callback`;
+}
+
+/**
+ * Determines if we're in production (for Secure cookie flag)
+ */
+function isProduction(request: HttpRequest): boolean {
+  const protocol = request.headers.get('x-forwarded-proto') || 'http';
+  return protocol === 'https';
+}
+
+/**
+ * Creates an HttpOnly cookie header value
+ */
+function createCookieHeader(token: string, maxAge: number, isSecure: boolean): string {
+  const parts = [
+    `${COOKIE_NAME}=${token}`,
+    `HttpOnly`,
+    `Path=/`,
+    `Max-Age=${maxAge}`,
+    `SameSite=Lax`,
+  ];
+
+  if (isSecure) {
+    parts.push('Secure');
+  }
+
+  return parts.join('; ');
+}
+
+/**
+ * Creates a cookie header to clear the auth cookie
+ */
+function createClearCookieHeader(isSecure: boolean): string {
+  const parts = [
+    `${COOKIE_NAME}=`,
+    `HttpOnly`,
+    `Path=/`,
+    `Max-Age=0`,
+    `SameSite=Lax`,
+  ];
+
+  if (isSecure) {
+    parts.push('Secure');
+  }
+
+  return parts.join('; ');
+}
+
+/**
+ * Extracts the access token from cookies
+ */
+export function getTokenFromCookies(request: HttpRequest): string | null {
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  for (const cookie of cookies) {
+    const [name, ...valueParts] = cookie.split('=');
+    if (name === COOKIE_NAME) {
+      return valueParts.join('='); // Handle tokens with = in them
+    }
+  }
+  return null;
 }
 
 /**
@@ -92,12 +159,13 @@ async function handleLogin(request: HttpRequest): Promise<HttpResponseInit> {
 /**
  * GET /api/auth/callback
  * Handles the Auth0 callback after user authentication
- * Exchanges the authorization code for tokens
+ * Exchanges the authorization code for tokens and sets HttpOnly cookie
  */
 async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     const config = getAuth0Config();
     const callbackUrl = getCallbackUrl(request);
+    const isSecure = isProduction(request);
 
     // Get the authorization code and state from query params
     const code = request.query.get('code');
@@ -172,20 +240,14 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
       expires_in: number;
     };
 
-    logger.info('Successfully obtained tokens');
+    logger.info('Successfully obtained tokens, setting HttpOnly cookie');
 
-    // Redirect back to the frontend with the token
-    // In a more secure implementation, you would:
-    // 1. Store the token in an HttpOnly cookie
-    // 2. Or store it server-side and return a session ID
-    // For simplicity, we're passing it as a URL fragment (client-side only)
-    const redirectUrl = new URL(returnUrl);
-    redirectUrl.hash = `access_token=${tokens.access_token}&token_type=${tokens.token_type}&expires_in=${tokens.expires_in}`;
-
+    // Set the access token as an HttpOnly cookie and redirect
     return {
       status: 302,
       headers: {
-        'Location': redirectUrl.toString(),
+        'Location': returnUrl,
+        'Set-Cookie': createCookieHeader(tokens.access_token, tokens.expires_in || COOKIE_MAX_AGE, isSecure),
       },
     };
   } catch (error) {
@@ -204,11 +266,12 @@ async function handleCallback(request: HttpRequest): Promise<HttpResponseInit> {
 
 /**
  * GET /api/auth/logout
- * Logs the user out of Auth0
+ * Clears the auth cookie and logs the user out of Auth0
  */
 async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     const config = getAuth0Config();
+    const isSecure = isProduction(request);
 
     // Get the return URL from query params
     const returnUrl = request.query.get('returnUrl') || config.frontendUrl;
@@ -220,10 +283,12 @@ async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
 
     logger.info('Initiating Auth0 logout', { returnUrl });
 
+    // Clear the cookie and redirect to Auth0 logout
     return {
       status: 302,
       headers: {
         'Location': logoutUrl.toString(),
+        'Set-Cookie': createClearCookieHeader(isSecure),
       },
     };
   } catch (error) {
@@ -242,16 +307,75 @@ async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
 }
 
 /**
+ * GET /api/auth/status
+ * Returns the current authentication status
+ * Checks if valid cookie exists and returns user info
+ */
+async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
+  try {
+    const config = getAuth0Config();
+    const accessToken = getTokenFromCookies(request);
+
+    if (!accessToken) {
+      return {
+        status: 200,
+        jsonBody: {
+          isAuthenticated: false,
+          user: null,
+        },
+      };
+    }
+
+    // Fetch user info from Auth0 to validate token
+    const userInfoResponse = await fetch(`https://${config.domain}/userinfo`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      logger.debug('Token validation failed', { status: userInfoResponse.status });
+      return {
+        status: 200,
+        jsonBody: {
+          isAuthenticated: false,
+          user: null,
+        },
+      };
+    }
+
+    const userInfo = await userInfoResponse.json();
+
+    return {
+      status: 200,
+      jsonBody: {
+        isAuthenticated: true,
+        user: userInfo,
+      },
+    };
+  } catch (error) {
+    logger.error('Failed to check auth status', error as Error);
+    return {
+      status: 200,
+      jsonBody: {
+        isAuthenticated: false,
+        user: null,
+      },
+    };
+  }
+}
+
+/**
  * GET /api/auth/me
  * Returns the current user's information
- * Requires a valid Bearer token
+ * Reads token from HttpOnly cookie
  */
 async function handleMe(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     const config = getAuth0Config();
-    const authHeader = request.headers.get('authorization');
+    const accessToken = getTokenFromCookies(request);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!accessToken) {
       return {
         status: 401,
         jsonBody: {
@@ -260,8 +384,6 @@ async function handleMe(request: HttpRequest): Promise<HttpResponseInit> {
         },
       };
     }
-
-    const accessToken = authHeader.substring(7);
 
     // Fetch user info from Auth0
     const userInfoResponse = await fetch(`https://${config.domain}/userinfo`, {
@@ -323,14 +445,16 @@ app.http('authLogout', {
   handler: handleLogout,
 });
 
+app.http('authStatus', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'auth/status',
+  handler: handleStatus,
+});
+
 app.http('authMe', {
   methods: ['GET'],
   authLevel: 'anonymous',
   route: 'auth/me',
   handler: handleMe,
 });
-
-
-
-
-
