@@ -47,6 +47,7 @@ function isProduction(request: HttpRequest): boolean {
 
 /**
  * Creates an HttpOnly cookie header value
+ * Uses SameSite=None for cross-domain support (BFF and frontend on different domains)
  */
 function createCookieHeader(token: string, maxAge: number, isSecure: boolean): string {
   const parts = [
@@ -54,12 +55,9 @@ function createCookieHeader(token: string, maxAge: number, isSecure: boolean): s
     `HttpOnly`,
     `Path=/`,
     `Max-Age=${maxAge}`,
-    `SameSite=Lax`,
+    `SameSite=None`, // Required for cross-domain cookies
+    `Secure`, // Required when SameSite=None
   ];
-
-  if (isSecure) {
-    parts.push('Secure');
-  }
 
   return parts.join('; ');
 }
@@ -67,18 +65,15 @@ function createCookieHeader(token: string, maxAge: number, isSecure: boolean): s
 /**
  * Creates a cookie header to clear the auth cookie
  */
-function createClearCookieHeader(isSecure: boolean): string {
+function createClearCookieHeader(): string {
   const parts = [
     `${COOKIE_NAME}=`,
     `HttpOnly`,
     `Path=/`,
     `Max-Age=0`,
-    `SameSite=Lax`,
+    `SameSite=None`,
+    `Secure`,
   ];
-
-  if (isSecure) {
-    parts.push('Secure');
-  }
 
   return parts.join('; ');
 }
@@ -288,7 +283,7 @@ async function handleLogout(request: HttpRequest): Promise<HttpResponseInit> {
       status: 302,
       headers: {
         'Location': logoutUrl.toString(),
-        'Set-Cookie': createClearCookieHeader(isSecure),
+        'Set-Cookie': createClearCookieHeader(),
       },
     };
   } catch (error) {
