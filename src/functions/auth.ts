@@ -327,24 +327,27 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
     try {
       const decoded = jwt.decode(accessToken) as any;
       if (decoded) {
-        // Try to extract roles from custom namespace first
-        const rolesNamespace = `https://${config.domain}/roles`;
-        logger.info('Looking for roles', {
-          namespace: rolesNamespace,
-          tokenKeys: Object.keys(decoded).join(','),
-          hasNamespace: decoded[rolesNamespace] ? 'yes' : 'no',
-          hasRoles: decoded.roles ? 'yes' : 'no'
-        });
-        if (decoded[rolesNamespace] && Array.isArray(decoded[rolesNamespace])) {
-          roles = decoded[rolesNamespace];
-          logger.info('Found roles in namespace', { roles: roles.join(',') });
+        // Check multiple possible namespaces for roles
+        const potentialNamespaces = [
+          `https://${config.domain}/roles`,
+          'https://deviceloandevth04web.z33.web.core.windows.net/roles'
+        ];
+
+        for (const ns of potentialNamespaces) {
+          if (decoded[ns] && Array.isArray(decoded[ns])) {
+            roles = decoded[ns];
+            logger.info(`Found roles in namespace: ${ns}`, { roles: roles.join(',') });
+            break;
+          }
         }
-        // Fallback to standard roles claim
-        else if (decoded.roles && Array.isArray(decoded.roles)) {
+        // If no roles found in custom namespaces, check standard roles claim
+        if (roles.length === 0 && decoded.roles && Array.isArray(decoded.roles)) {
           roles = decoded.roles;
           logger.info('Found roles in standard claim', { roles: roles.join(',') });
-        } else {
-          logger.info('No roles found in token');
+        }
+
+        if (roles.length === 0) {
+          logger.info('No roles found in token', { tokenKeys: Object.keys(decoded).join(',') });
         }
       }
     } catch (error) {
