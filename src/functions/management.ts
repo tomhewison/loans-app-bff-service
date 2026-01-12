@@ -128,7 +128,7 @@ async function proxyToManagementService(
  * Get dashboard statistics (staff only)
  */
 async function handleDashboardStats(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/api/dashboard/stats');
+    return proxyToManagementService(request, '/dashboard/stats');
 }
 
 /**
@@ -136,7 +136,7 @@ async function handleDashboardStats(request: HttpRequest): Promise<HttpResponseI
  * List all reservations with optional filters (staff only)
  */
 async function handleListReservations(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/api/admin/reservations');
+    return proxyToManagementService(request, '/reservations');
 }
 
 /**
@@ -144,7 +144,7 @@ async function handleListReservations(request: HttpRequest): Promise<HttpRespons
  * List overdue reservations (staff only)
  */
 async function handleListOverdue(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/api/admin/reservations/overdue');
+    return proxyToManagementService(request, '/reservations/overdue');
 }
 
 /**
@@ -152,7 +152,7 @@ async function handleListOverdue(request: HttpRequest): Promise<HttpResponseInit
  * List pending collections (staff only)
  */
 async function handleListPending(request: HttpRequest): Promise<HttpResponseInit> {
-    return proxyToManagementService(request, '/api/admin/reservations/pending');
+    return proxyToManagementService(request, '/reservations/pending');
 }
 
 // Register management endpoints
