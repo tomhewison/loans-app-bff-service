@@ -329,12 +329,22 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
       if (decoded) {
         // Try to extract roles from custom namespace first
         const rolesNamespace = `https://${config.domain}/roles`;
+        logger.info('Looking for roles', {
+          namespace: rolesNamespace,
+          tokenKeys: Object.keys(decoded).join(','),
+          hasNamespace: decoded[rolesNamespace] ? 'yes' : 'no',
+          hasRoles: decoded.roles ? 'yes' : 'no'
+        });
         if (decoded[rolesNamespace] && Array.isArray(decoded[rolesNamespace])) {
           roles = decoded[rolesNamespace];
+          logger.info('Found roles in namespace', { roles: roles.join(',') });
         }
         // Fallback to standard roles claim
         else if (decoded.roles && Array.isArray(decoded.roles)) {
           roles = decoded.roles;
+          logger.info('Found roles in standard claim', { roles: roles.join(',') });
+        } else {
+          logger.info('No roles found in token');
         }
       }
     } catch (error) {
