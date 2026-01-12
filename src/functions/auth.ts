@@ -1,5 +1,6 @@
 import { app, HttpRequest, HttpResponseInit } from '@azure/functions';
 import { logger } from '../infra/logging/logger';
+import * as jwt from 'jsonwebtoken';
 
 // Cookie configuration
 const COOKIE_NAME = 'bff_access_token';
@@ -321,6 +322,26 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
       };
     }
 
+    // Decode the token to extract roles (without verification, as we'll validate with Auth0)
+    let roles: string[] = [];
+    try {
+      const decoded = jwt.decode(accessToken) as any;
+      if (decoded) {
+        // Try to extract roles from custom namespace first
+        const rolesNamespace = `https://${config.domain}/roles`;
+        if (decoded[rolesNamespace] && Array.isArray(decoded[rolesNamespace])) {
+          roles = decoded[rolesNamespace];
+        }
+        // Fallback to standard roles claim
+        else if (decoded.roles && Array.isArray(decoded.roles)) {
+          roles = decoded.roles;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.debug('Failed to decode token for roles', { error: message });
+    }
+
     // Fetch user info from Auth0 to validate token
     const userInfoResponse = await fetch(`https://${config.domain}/userinfo`, {
       headers: {
@@ -345,7 +366,10 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
       status: 200,
       jsonBody: {
         isAuthenticated: true,
-        user: userInfo,
+        user: {
+          ...userInfo,
+          roles,
+        },
       },
     };
   } catch (error) {
