@@ -346,6 +346,22 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
           logger.info('Found roles in standard claim', { roles: roles.join(',') });
         }
 
+        // Fallback: Infer 'staff' role from permissions
+        if (roles.length === 0 && decoded.permissions && Array.isArray(decoded.permissions)) {
+          logger.info('Checking permissions for role inference', { permissions: decoded.permissions.join(',') });
+
+          // If we find any permission that looks administrative, grant staff role
+          const hasStaffPermission = decoded.permissions.some((p: string) =>
+            p.includes('read') || p.includes('write') || p.includes('delete') || p.includes('update') || p.includes('admin')
+          );
+
+          // If any permissions exist (since only staff have permissions currently), grant staff role
+          if (hasStaffPermission || decoded.permissions.length > 0) {
+            roles.push('staff');
+            logger.info('Inferred staff role from permissions');
+          }
+        }
+
         if (roles.length === 0) {
           logger.info('No roles found in token', { tokenKeys: Object.keys(decoded).join(',') });
         }
