@@ -322,8 +322,9 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
       };
     }
 
-    // Decode the token to extract permissions (without verification, as we'll validate with Auth0)
+    // Decode the token to extract permissions and roles (without verification, as we'll validate with Auth0)
     let permissions: string[] = [];
+    let roles: string[] = [];
     try {
       const decoded = jwt.decode(accessToken) as any;
       if (decoded) {
@@ -339,13 +340,25 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
           logger.info('Found permissions in scope claim', { permissions: permissions.join(',') });
         }
 
-        if (permissions.length === 0) {
-          logger.info('No permissions found in token', { tokenKeys: Object.keys(decoded).join(',') });
+        // Extract roles from the token
+        const domain = config.domain.replace(/\/$/, '');
+        const rolesNamespace = `https://${domain}/roles`;
+        
+        if (decoded[rolesNamespace] && Array.isArray(decoded[rolesNamespace])) {
+          roles = decoded[rolesNamespace];
+          logger.info('Found roles in token (namespaced)', { roles: roles.join(',') });
+        } else if (decoded.roles && Array.isArray(decoded.roles)) {
+          roles = decoded.roles;
+          logger.info('Found roles in token (standard claim)', { roles: roles.join(',') });
+        }
+
+        if (permissions.length === 0 && roles.length === 0) {
+          logger.info('No permissions or roles found in token', { tokenKeys: Object.keys(decoded).join(',') });
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.debug('Failed to decode token for permissions', { error: message });
+      logger.debug('Failed to decode token for permissions/roles', { error: message });
     }
 
     // Fetch user info from Auth0 to validate token
@@ -375,6 +388,7 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
         user: {
           ...userInfo,
           permissions,
+          roles,
         },
       },
     };
