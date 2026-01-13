@@ -322,53 +322,30 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
       };
     }
 
-    // Decode the token to extract roles (without verification, as we'll validate with Auth0)
-    let roles: string[] = [];
+    // Decode the token to extract permissions (without verification, as we'll validate with Auth0)
+    let permissions: string[] = [];
     try {
       const decoded = jwt.decode(accessToken) as any;
       if (decoded) {
-        // Check multiple possible namespaces for roles
-        const potentialNamespaces = [
-          `https://${config.domain}/roles`,
-          'https://deviceloandevth04web.z33.web.core.windows.net/roles'
-        ];
-
-        for (const ns of potentialNamespaces) {
-          if (decoded[ns] && Array.isArray(decoded[ns])) {
-            roles = decoded[ns];
-            logger.info(`Found roles in namespace: ${ns}`, { roles: roles.join(',') });
-            break;
-          }
-        }
-        // If no roles found in custom namespaces, check standard roles claim
-        if (roles.length === 0 && decoded.roles && Array.isArray(decoded.roles)) {
-          roles = decoded.roles;
-          logger.info('Found roles in standard claim', { roles: roles.join(',') });
+        // Extract permissions from the token
+        if (decoded.permissions && Array.isArray(decoded.permissions)) {
+          permissions = decoded.permissions;
+          logger.info('Found permissions in token', { permissions: permissions.join(',') });
         }
 
-        // Fallback: Infer 'staff' role from permissions
-        if (roles.length === 0 && decoded.permissions && Array.isArray(decoded.permissions)) {
-          logger.info('Checking permissions for role inference', { permissions: decoded.permissions.join(',') });
-
-          // If we find any permission that looks administrative, grant staff role
-          const hasStaffPermission = decoded.permissions.some((p: string) =>
-            p.includes('read') || p.includes('write') || p.includes('delete') || p.includes('update') || p.includes('admin')
-          );
-
-          // If any permissions exist (since only staff have permissions currently), grant staff role
-          if (hasStaffPermission || decoded.permissions.length > 0) {
-            roles.push('staff');
-            logger.info('Inferred staff role from permissions');
-          }
+        // Also check scope claim
+        if (permissions.length === 0 && decoded.scope && typeof decoded.scope === 'string') {
+          permissions = decoded.scope.split(' ').filter((s: string) => s.length > 0);
+          logger.info('Found permissions in scope claim', { permissions: permissions.join(',') });
         }
 
-        if (roles.length === 0) {
-          logger.info('No roles found in token', { tokenKeys: Object.keys(decoded).join(',') });
+        if (permissions.length === 0) {
+          logger.info('No permissions found in token', { tokenKeys: Object.keys(decoded).join(',') });
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.debug('Failed to decode token for roles', { error: message });
+      logger.debug('Failed to decode token for permissions', { error: message });
     }
 
     // Fetch user info from Auth0 to validate token
@@ -397,7 +374,7 @@ async function handleStatus(request: HttpRequest): Promise<HttpResponseInit> {
         isAuthenticated: true,
         user: {
           ...userInfo,
-          roles,
+          permissions,
         },
       },
     };
